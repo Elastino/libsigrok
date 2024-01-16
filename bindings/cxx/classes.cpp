@@ -131,19 +131,19 @@ Context::Context() :
 	if (struct sr_dev_driver **driver_list = sr_driver_list(_structure))
 		for (int i = 0; driver_list[i]; i++) {
 			unique_ptr<Driver> driver {new Driver{driver_list[i]}};
-			_drivers.emplace(driver->name(), move(driver));
+			_drivers.emplace(driver->name(), std::move(driver));
 		}
 
 	if (const struct sr_input_module **input_list = sr_input_list())
 		for (int i = 0; input_list[i]; i++) {
 			unique_ptr<InputFormat> input {new InputFormat{input_list[i]}};
-			_input_formats.emplace(input->name(), move(input));
+			_input_formats.emplace(input->name(), std::move(input));
 		}
 
 	if (const struct sr_output_module **output_list = sr_output_list())
 		for (int i = 0; output_list[i]; i++) {
 			unique_ptr<OutputFormat> output {new OutputFormat{output_list[i]}};
-			_output_formats.emplace(output->name(), move(output));
+			_output_formats.emplace(output->name(), std::move(output));
 		}
 }
 
@@ -250,7 +250,7 @@ static int call_log_callback(void *cb_data, int loglevel,
 
 void Context::set_log_callback(LogCallbackFunction callback)
 {
-	_log_callback = move(callback);
+	_log_callback = std::move(callback);
 	check(sr_log_callback_set(call_log_callback, &_log_callback));
 }
 
@@ -283,7 +283,7 @@ shared_ptr<UserDevice> Context::create_user_device(
 		string vendor, string model, string version)
 {
 	return shared_ptr<UserDevice>{
-		new UserDevice{move(vendor), move(model), move(version)},
+		new UserDevice{std::move(vendor), std::move(model), std::move(version)},
 		default_delete<UserDevice>{}};
 }
 
@@ -348,7 +348,7 @@ shared_ptr<Packet> Context::create_analog_packet(
 		meaning->channels = g_slist_append(meaning->channels, channel->_structure);
 	meaning->mq = static_cast<sr_mq>(mq->id());
 	meaning->unit = static_cast<sr_unit>(unit->id());
-	meaning->mqflags = static_cast<sr_mqflag>(QuantityFlag::mask_from_flags(move(mqflags)));
+	meaning->mqflags = static_cast<sr_mqflag>(QuantityFlag::mask_from_flags(std::move(mqflags)));
 
 	analog->encoding = encoding;
 
@@ -390,14 +390,14 @@ shared_ptr<Packet> Context::create_end_packet()
 shared_ptr<Session> Context::load_session(string filename)
 {
 	return shared_ptr<Session>{
-		new Session{shared_from_this(), move(filename)},
+		new Session{shared_from_this(), std::move(filename)},
 		default_delete<Session>{}};
 }
 
 shared_ptr<Trigger> Context::create_trigger(string name)
 {
 	return shared_ptr<Trigger>{
-		new Trigger{shared_from_this(), move(name)},
+		new Trigger{shared_from_this(), std::move(name)},
 		default_delete<Trigger>{}};
 }
 
@@ -506,7 +506,7 @@ vector<shared_ptr<HardwareDevice>> Driver::scan(
 		shared_ptr<HardwareDevice> hwdev {
 			new HardwareDevice{shared_from_this(), sdi},
 			default_delete<HardwareDevice>{}};
-		result.push_back(move(hwdev));
+		result.push_back(std::move(hwdev));
 	}
 
 	/* Free GSList returned from scan. */
@@ -600,13 +600,13 @@ Device::Device(struct sr_dev_inst *structure) :
 	for (GSList *entry = sr_dev_inst_channels_get(structure); entry; entry = entry->next) {
 		auto *const ch = static_cast<struct sr_channel *>(entry->data);
 		unique_ptr<Channel> channel {new Channel{ch}};
-		_channels.emplace(ch, move(channel));
+		_channels.emplace(ch, std::move(channel));
 	}
 
 	for (GSList *entry = sr_dev_inst_channel_groups_get(structure); entry; entry = entry->next) {
 		auto *const cg = static_cast<struct sr_channel_group *>(entry->data);
 		unique_ptr<ChannelGroup> group {new ChannelGroup{this, cg}};
-		_channel_groups.emplace(group->name(), move(group));
+		_channel_groups.emplace(group->name(), std::move(group));
 	}
 }
 
@@ -679,7 +679,7 @@ void Device::close()
 HardwareDevice::HardwareDevice(shared_ptr<Driver> driver,
 		struct sr_dev_inst *structure) :
 	Device(structure),
-	_driver(move(driver))
+	_driver(std::move(driver))
 {
 }
 
@@ -720,7 +720,7 @@ shared_ptr<Channel> UserDevice::add_channel(unsigned int index,
 	GSList *const last = g_slist_last(sr_dev_inst_channels_get(Device::_structure));
 	auto *const ch = static_cast<struct sr_channel *>(last->data);
 	unique_ptr<Channel> channel {new Channel{ch}};
-	_channels.emplace(ch, move(channel));
+	_channels.emplace(ch, std::move(channel));
 	return get_channel(ch);
 }
 
@@ -795,12 +795,12 @@ vector<shared_ptr<Channel>> ChannelGroup::channels()
 
 Trigger::Trigger(shared_ptr<Context> context, string name) :
 	_structure(sr_trigger_new(name.c_str())),
-	_context(move(context))
+	_context(std::move(context))
 {
 	for (auto *stage = _structure->stages; stage; stage = stage->next) {
 		unique_ptr<TriggerStage> ts {new TriggerStage{
 				static_cast<struct sr_trigger_stage *>(stage->data)}};
-		_stages.push_back(move(ts));
+		_stages.push_back(std::move(ts));
 	}
 }
 
@@ -825,7 +825,7 @@ vector<shared_ptr<TriggerStage>> Trigger::stages()
 shared_ptr<TriggerStage> Trigger::add_stage()
 {
 	unique_ptr<TriggerStage> stage {new TriggerStage{sr_trigger_stage_add(_structure)}};
-	_stages.push_back(move(stage));
+	_stages.push_back(std::move(stage));
 	return _stages.back()->share_owned_by(shared_from_this());
 }
 
@@ -859,20 +859,20 @@ void TriggerStage::add_match(shared_ptr<Channel> channel,
 	GSList *const last = g_slist_last(_structure->matches);
 	unique_ptr<TriggerMatch> match {new TriggerMatch{
 			static_cast<struct sr_trigger_match *>(last->data),
-			move(channel)}};
-	_matches.push_back(move(match));
+			std::move(channel)}};
+	_matches.push_back(std::move(match));
 }
 
 void TriggerStage::add_match(shared_ptr<Channel> channel,
 	const TriggerMatchType *type)
 {
-	add_match(move(channel), type, NAN);
+	add_match(std::move(channel), type, NAN);
 }
 
 TriggerMatch::TriggerMatch(struct sr_trigger_match *structure,
 		shared_ptr<Channel> channel) :
 	_structure(structure),
-	_channel(move(channel))
+	_channel(std::move(channel))
 {
 }
 
@@ -897,7 +897,7 @@ float TriggerMatch::value() const
 
 DatafeedCallbackData::DatafeedCallbackData(Session *session,
 		DatafeedCallbackFunction callback) :
-	_callback(move(callback)),
+	_callback(std::move(callback)),
 	_session(session)
 {
 }
@@ -907,7 +907,7 @@ void DatafeedCallbackData::run(const struct sr_dev_inst *sdi,
 {
 	auto device = _session->get_device(sdi);
 	shared_ptr<Packet> packet {new Packet{device, pkt}, default_delete<Packet>{}};
-	_callback(move(device), move(packet));
+	_callback(std::move(device), std::move(packet));
 }
 
 SessionDevice::SessionDevice(struct sr_dev_inst *structure) :
@@ -926,7 +926,7 @@ shared_ptr<Device> SessionDevice::get_shared_from_this()
 
 Session::Session(shared_ptr<Context> context) :
 	_structure(nullptr),
-	_context(move(context))
+	_context(std::move(context))
 {
 	check(sr_session_new(_context->_structure, &_structure));
 	_context->_session = this;
@@ -934,8 +934,8 @@ Session::Session(shared_ptr<Context> context) :
 
 Session::Session(shared_ptr<Context> context, string filename) :
 	_structure(nullptr),
-	_context(move(context)),
-	_filename(move(filename))
+	_context(std::move(context)),
+	_filename(std::move(filename))
 {
 	check(sr_session_load(_context->_structure, _filename.c_str(), &_structure));
 	GSList *dev_list;
@@ -943,7 +943,7 @@ Session::Session(shared_ptr<Context> context, string filename) :
 	for (GSList *dev = dev_list; dev; dev = dev->next) {
 		auto *const sdi = static_cast<struct sr_dev_inst *>(dev->data);
 		unique_ptr<SessionDevice> device {new SessionDevice{sdi}};
-		_owned_devices.emplace(sdi, move(device));
+		_owned_devices.emplace(sdi, std::move(device));
 	}
 	_context->_session = this;
 	g_slist_free(dev_list);
@@ -969,7 +969,7 @@ void Session::add_device(shared_ptr<Device> device)
 {
 	const auto dev_struct = device->_structure;
 	check(sr_session_dev_add(_structure, dev_struct));
-	_other_devices[dev_struct] = move(device);
+	_other_devices[dev_struct] = std::move(device);
 }
 
 vector<shared_ptr<Device>> Session::devices()
@@ -1022,7 +1022,7 @@ static void session_stopped_callback(void *data) noexcept
 
 void Session::set_stopped_callback(SessionStoppedCallback callback)
 {
-	_stopped_callback = move(callback);
+	_stopped_callback = std::move(callback);
 	if (_stopped_callback)
 		check(sr_session_stopped_callback_set(_structure,
 				&session_stopped_callback, &_stopped_callback));
@@ -1041,10 +1041,10 @@ static void datafeed_callback(const struct sr_dev_inst *sdi,
 void Session::add_datafeed_callback(DatafeedCallbackFunction callback)
 {
 	unique_ptr<DatafeedCallbackData> cb_data
-		{new DatafeedCallbackData{this, move(callback)}};
+		{new DatafeedCallbackData{this, std::move(callback)}};
 	check(sr_session_datafeed_callback_add(_structure,
 			&datafeed_callback, cb_data.get()));
-	_datafeed_callbacks.push_back(move(cb_data));
+	_datafeed_callbacks.push_back(std::move(cb_data));
 }
 
 void Session::remove_datafeed_callbacks()
@@ -1065,7 +1065,7 @@ void Session::set_trigger(shared_ptr<Trigger> trigger)
 		check(sr_session_trigger_set(_structure, nullptr));
 	else
 		check(sr_session_trigger_set(_structure, trigger->_structure));
-	_trigger = move(trigger);
+	_trigger = std::move(trigger);
 }
 
 string Session::filename() const
@@ -1081,7 +1081,7 @@ shared_ptr<Context> Session::context()
 Packet::Packet(shared_ptr<Device> device,
 	const struct sr_datafeed_packet *structure) :
 	_structure(structure),
-	_device(move(device))
+	_device(std::move(device))
 {
 	switch (structure->type)
 	{
@@ -1436,7 +1436,7 @@ map<string, shared_ptr<Option>> InputFormat::options()
 			shared_ptr<Option> opt {
 				new Option{options[i], option_array},
 				default_delete<Option>{}};
-			result.emplace(opt->id(), move(opt));
+			result.emplace(opt->id(), std::move(opt));
 		}
 	}
 	return result;
@@ -1453,7 +1453,7 @@ shared_ptr<Input> InputFormat::create_input(
 
 Input::Input(shared_ptr<Context> context, const struct sr_input *structure) :
 	_structure(structure),
-	_context(move(context))
+	_context(std::move(context))
 {
 }
 
@@ -1495,7 +1495,7 @@ Input::~Input()
 InputDevice::InputDevice(shared_ptr<Input> input,
 		struct sr_dev_inst *structure) :
 	Device(structure),
-	_input(move(input))
+	_input(std::move(input))
 {
 }
 
@@ -1511,7 +1511,7 @@ shared_ptr<Device> InputDevice::get_shared_from_this()
 Option::Option(const struct sr_option *structure,
 		shared_ptr<const struct sr_option *> structure_array) :
 	_structure(structure),
-	_structure_array(move(structure_array))
+	_structure_array(std::move(structure_array))
 {
 }
 
@@ -1612,7 +1612,7 @@ map<string, shared_ptr<Option>> OutputFormat::options()
 			shared_ptr<Option> opt {
 				new Option{options[i], option_array},
 				default_delete<Option>{}};
-			result.emplace(opt->id(), move(opt));
+			result.emplace(opt->id(), std::move(opt));
 		}
 	}
 	return result;
@@ -1622,7 +1622,7 @@ shared_ptr<Output> OutputFormat::create_output(
 	shared_ptr<Device> device, map<string, Glib::VariantBase> options)
 {
 	return shared_ptr<Output>{
-		new Output{shared_from_this(), move(device), move(options)},
+		new Output{shared_from_this(), std::move(device), std::move(options)},
 		default_delete<Output>{}};
 }
 
@@ -1630,7 +1630,7 @@ shared_ptr<Output> OutputFormat::create_output(string filename,
 	shared_ptr<Device> device, map<string, Glib::VariantBase> options)
 {
 	return shared_ptr<Output>{
-		new Output{move(filename), shared_from_this(), move(device), move(options)},
+		new Output{std::move(filename), shared_from_this(), std::move(device), std::move(options)},
 		default_delete<Output>{}};
 }
 
@@ -1643,9 +1643,9 @@ Output::Output(shared_ptr<OutputFormat> format,
 		shared_ptr<Device> device, map<string, Glib::VariantBase> options) :
 	_structure(sr_output_new(format->_structure,
 		map_to_hash_variant(options), device->_structure, nullptr)),
-	_format(move(format)),
-	_device(move(device)),
-	_options(move(options))
+	_format(std::move(format)),
+	_device(std::move(device)),
+	_options(std::move(options))
 {
 }
 
@@ -1653,9 +1653,9 @@ Output::Output(string filename, shared_ptr<OutputFormat> format,
 		shared_ptr<Device> device, map<string, Glib::VariantBase> options) :
 	_structure(sr_output_new(format->_structure,
 		map_to_hash_variant(options), device->_structure, filename.c_str())),
-	_format(move(format)),
-	_device(move(device)),
-	_options(move(options))
+	_format(std::move(format)),
+	_device(std::move(device)),
+	_options(std::move(options))
 {
 }
 
