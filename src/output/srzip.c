@@ -102,7 +102,7 @@ static int zip_create(const struct sr_output *o)
 
 	/* "version" */
 	versrc = zip_source_buffer(zipfile, "2", 1, FALSE);
-	if (zip_add(zipfile, "version", versrc) < 0) {
+	if (zip_file_add(zipfile, "version", versrc) < 0) {
 		sr_err("Error saving version into zipfile: %s",
 			zip_strerror(zipfile));
 		zip_source_free(versrc);
@@ -341,7 +341,7 @@ static int zip_append(const struct sr_output *o,
 			 * "logic-1". Rename it to "logic-1-1" and continue
 			 * with chunk 2.
 			 */
-			if (zip_rename(archive, i, "logic-1-1") < 0) {
+			if (zip_file_rename(archive, i, "logic-1-1") < 0) {
 				sr_err("Failed to rename 'logic-1' to 'logic-1-1': %s",
 					zip_strerror(archive));
 				zip_discard(archive);
@@ -554,7 +554,7 @@ static int zip_append_analog(const struct sr_output *o,
 	size = sizeof(values[0]) * count;
 	analogsrc = zip_source_buffer(archive, values, size, FALSE);
 	chunkname = g_strdup_printf("%s-%u", basename, next_chunk_num);
-	i = zip_add(archive, chunkname, analogsrc);
+	i = zip_file_add(archive, chunkname, analogsrc);
 	if (i < 0) {
 		sr_err("Failed to add chunk '%s': %s", chunkname, zip_strerror(archive));
 		g_free(chunkname);
